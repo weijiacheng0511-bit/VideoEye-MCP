@@ -34,13 +34,14 @@ async function runProcess(command: string, args: string[], timeoutMs: number): P
       child.kill("SIGKILL");
       if (!settled) {
         settled = true;
-        reject(new Error(`FFmpeg 超时（>${timeoutMs}ms）`));
+        const detail = stderr.trim().slice(-1200);
+        reject(new Error(`FFmpeg 超时（>${timeoutMs}ms）${detail ? `: ${detail}` : ""}`));
       }
     }, timeoutMs);
     timer.unref?.();
 
     child.stderr.on("data", chunk => {
-      if (stderr.length < 8000) stderr += String(chunk);
+      stderr = (stderr + String(chunk)).slice(-8000);
     });
     child.on("error", error => {
       clearTimeout(timer);
@@ -99,6 +100,8 @@ export async function createInspectionClip(sourcePath: string, plan: ClipPlan, j
   try {
     await runProcess(ffmpeg, [
       "-hide_banner", "-loglevel", "error", "-y",
+      // Autoscale provides two vCPUs; host CPU detection can oversubscribe codecs.
+      "-threads", "2", "-filter_threads", "2",
       "-ss", formatNumber(plan.clipStart),
       "-i", sourcePath,
       "-t", formatNumber(plan.clipDuration),
@@ -107,11 +110,13 @@ export async function createInspectionClip(sourcePath: string, plan: ClipPlan, j
       "-sn", "-dn",
       "-c:v", "libx264",
       "-preset", "veryfast",
+      "-threads", "2",
       "-crf", "23",
       "-c:a", "aac",
       "-b:a", "128k",
       "-movflags", "+faststart",
       "-avoid_negative_ts", "make_zero",
+      "-progress", "pipe:2", "-stats_period", "2",
       outputPath,
     ], 180_000);
     const info = await stat(outputPath);
@@ -196,3 +201,4 @@ export function videoTokensFromResult(result: VideoObservation): number | null {
   const value = (details as Record<string, unknown>).video_tokens;
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
+
