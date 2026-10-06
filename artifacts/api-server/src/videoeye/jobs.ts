@@ -286,9 +286,25 @@ export class VideoJobManager {
     }, "VideoEye job failed");
   }
 
-  async get(jobId: string): Promise<Record<string, unknown> | null> {
-    const job = await this.load(jobId);
+  async get(jobId: string, waitMs = 0): Promise<Record<string, unknown> | null> {
+    let job = await this.load(jobId);
     if (!job) return null;
+    const running = this.active.get(jobId);
+    if (running && waitMs > 0 && job.status !== "completed" && job.status !== "failed") {
+      // A bounded long poll keeps an actual result request in flight on Autoscale.
+      // Waiting observes the existing runner; it never submits another model call.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          running,
+          new Promise<void>(resolve => { timer = setTimeout(resolve, Math.min(waitMs, 20_000)); }),
+        ]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+      job = await this.load(jobId);
+      if (!job) return null;
+    }
     return { ...jobSummary(job), next_action: job.status === "completed" ? "use result" : job.status === "failed" ? "retry original request if retryable" : "call get_analysis_job again after a short wait" };
   }
 

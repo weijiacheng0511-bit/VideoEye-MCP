@@ -224,14 +224,14 @@ export function registerVideoEyeTools(server: McpServer, createEye: () => VideoE
 
   server.registerTool("get_analysis_job", {
     title: "Get VideoEye analysis job",
-    description: "Get the current status or completed result of an analyze_douyin_video / inspect_video background job. This call is fast and does not start another video-model request.",
-    inputSchema: { job_id: jobIdSchema },
+    description: "Get the current status or completed result of an analyze_douyin_video / inspect_video background job without starting another model request. Default is an immediate status check. On Autoscale, use wait_ms=20000 and repeat until completed/failed so the existing CPU-intensive clipping job can run while a result request is being served. Each wait is bounded and returns early on completion.",
+    inputSchema: { job_id: jobIdSchema, wait_ms: z.number().int().min(0).max(20_000).optional() },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-  }, async ({ job_id }) => {
+  }, async ({ job_id, wait_ms }) => {
     try {
       const eye = createEye();
       const manager = getVideoJobManager(eye.cache.root);
-      const job = await manager.get(job_id);
+      const job = await manager.get(job_id, wait_ms ?? 0);
       if (!job) throw new Error("未找到该 job_id；任务可能已过期，或部署进程/存储已被重置");
       return reply(job);
     } catch (error) { return failure(error); }

@@ -62,6 +62,12 @@ unset in production so the fixed GitHub repository is used. The existing
 publishing does not delete that cache. Replit deployment-local storage can
 still be reset by the platform. The in-process async worker and local JSON
 job persistence are retained; platform suspension may interrupt long jobs.
+For a running job on Autoscale, poll `get_analysis_job` with `wait_ms=20000`
+and repeat until completed/failed. This bounded long poll keeps a real result
+request in flight while the existing runner processes CPU-intensive clips;
+it does not submit another model request. Omitting `wait_ms` preserves the
+immediate status check. Completed, failed, and missing jobs return immediately.
+This does not make local jobs durable across platform restarts or scaling.
 
 ## Production acceptance
 
@@ -71,7 +77,8 @@ After publishing, require `runtime_diagnostics` to report:
 - `source_commit` equal to the intended GitHub main commit
 - `video_worker = qwen`, `dashscope_api_key_present = true`, `cache_writable = true`
 
-Then analyze https://v.douyin.com/J7FNDFSkD1U/ and poll `get_analysis_job` to
+Then analyze https://v.douyin.com/J7FNDFSkD1U/ and poll `get_analysis_job` with
+`wait_ms=20000` to
 completion. Review the actual dialogue, people, visual/animation transitions,
 screen text, audio events, entities, uncertainty, and objective summary.
 Provider/model/token/byte/timing metadata are preserved in the result.

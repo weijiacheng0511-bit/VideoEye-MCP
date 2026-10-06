@@ -91,6 +91,43 @@ try {
   assert.equal(context.structuredContent.latest_analysis.provider, "mock");
   assert.equal(downloads, 1);
 
+  // Verify bounded waits observe one existing job, time out with its status,
+  // and return promptly after it completes without repeating model work.
+  const originalAnalyze = worker.analyze.bind(worker);
+  let releaseAnalysis;
+  const analysisGate = new Promise(resolve => { releaseAnalysis = resolve; });
+  worker.analyze = async input => { await analysisGate; return originalAnalyze(input); };
+  const waiting = await client.callTool({ name: "inspect_video", arguments: {
+    video_id: videoId, question: "bounded long-poll regression",
+  } });
+  const waitingId = waiting.structuredContent.job_id;
+  const immediateStarted = Date.now();
+  const immediate = await client.callTool({ name: "get_analysis_job", arguments: { job_id: waitingId } });
+  assert.equal(immediate.structuredContent.status, "processing");
+  assert(Date.now() - immediateStarted < 1000, "Default job checks must remain immediate");
+  const boundedStarted = Date.now();
+  const bounded = await client.callTool({ name: "get_analysis_job", arguments: { job_id: waitingId, wait_ms: 80 } });
+  assert.equal(bounded.structuredContent.status, "processing");
+  assert(Date.now() - boundedStarted >= 60 && Date.now() - boundedStarted < 1000, "Wait must respect its bound");
+  const callsBeforeRelease = worker.calls.length;
+  const releaseTimer = setTimeout(releaseAnalysis, 100);
+  const completedStarted = Date.now();
+  const completedWait = await client.callTool({ name: "get_analysis_job", arguments: { job_id: waitingId, wait_ms: 2000 } });
+  clearTimeout(releaseTimer);
+  assert.equal(completedWait.structuredContent.status, "completed");
+  assert(Date.now() - completedStarted < 1000, "Wait must return early after completion");
+  assert.equal(worker.calls.length, callsBeforeRelease + 1, "Waiting must not repeat model work");
+  const terminalStarted = Date.now();
+  await client.callTool({ name: "get_analysis_job", arguments: { job_id: waitingId, wait_ms: 20000 } });
+  assert(Date.now() - terminalStarted < 1000, "Completed jobs must not wait");
+  const missingStarted = Date.now();
+  const missing = await client.callTool({ name: "get_analysis_job", arguments: { job_id: "job_ffffffffffffffffffffffff", wait_ms: 20000 } });
+  assert.equal(missing.isError, true);
+  assert(Date.now() - missingStarted < 1000, "Missing jobs must not wait");
+  const excessive = await client.callTool({ name: "get_analysis_job", arguments: { job_id: waitingId, wait_ms: 20001 } });
+  assert.equal(excessive.isError, true, "MCP schema must reject unbounded waits");
+  assert.equal(downloads, 1);
+
   const diagnostics = await client.callTool({ name: "runtime_diagnostics", arguments: {} });
   assert.equal(diagnostics.isError, undefined);
   assert.equal(diagnostics.structuredContent.video_worker, "mock");
