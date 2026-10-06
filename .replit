@@ -7,7 +7,7 @@ build = ["node", "scripts/replit-build.mjs"]
 run = ["node", "--enable-source-maps", ".videoeye-release/artifacts/api-server/dist/index.mjs"]
 
 [deployment.postBuild]
-args = ["pnpm", "store", "prune"]
+args = ["npm", "exec", "--yes", "--package=pnpm@11.19.0", "--", "pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]

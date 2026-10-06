@@ -15,7 +15,7 @@ function command(executable, args, cwd = root, extraEnv = {}, capture = false) {
   return new Promise((resolve, reject) => {
     const child = spawn(executable, args, { cwd, env: { ...process.env, ...extraEnv },
       stdio: capture ? ["ignore", "pipe", "inherit"] : "inherit",
-      windowsHide: true, shell: process.platform === "win32" && executable === "pnpm" });
+      windowsHide: true, shell: process.platform === "win32" && ["pnpm", "npm"].includes(executable) });
     let output = "";
     child.stdout?.on("data", chunk => { output += chunk; });
     child.on("error", reject);
@@ -46,14 +46,14 @@ try {
     await command("git", ["fetch", "--depth=1", repository, commit], release);
     await command("git", ["checkout", "--detach", "FETCH_HEAD"], release);
     const environment = { CI: "true", BASE_PATH: "/", PORT: "8080", VIDEOEYE_SOURCE_COMMIT: commit };
-    // The release's packageManager pin makes pnpm select the tested version.
-    // A CLI path override allows testing in hosts that provide pnpm as a JS file.
-    const pnpm = (...args) => process.env.VIDEOEYE_PNPM_CLI
-      ? command(process.execPath, [process.env.VIDEOEYE_PNPM_CLI, ...args], release, environment)
-      : command("pnpm", args, release, environment);
-    const installedVersion = process.env.VIDEOEYE_PNPM_CLI
-      ? await command(process.execPath, [process.env.VIDEOEYE_PNPM_CLI, "--version"], release, environment, true)
-      : await command("pnpm", ["--version"], release, environment, true);
+    // Replit's global pnpm can recurse while switching to the packageManager pin.
+    // npm exec selects the exact CLI independently and caches it for later steps.
+    // A CLI path override supports hosts that already provide pnpm as a JS file.
+    const pnpmCommand = (args, capture = false) => process.env.VIDEOEYE_PNPM_CLI
+      ? command(process.execPath, [process.env.VIDEOEYE_PNPM_CLI, ...args], release, environment, capture)
+      : command("npm", ["exec", "--yes", "--package=pnpm@11.19.0", "--", "pnpm", ...args], release, environment, capture);
+    const pnpm = (...args) => pnpmCommand(args);
+    const installedVersion = await pnpmCommand(["--version"], true);
     if (installedVersion !== "11.19.0") throw new Error(`Expected pnpm 11.19.0, received ${installedVersion}`);
     await command(process.env.FFMPEG_PATH || "ffmpeg", ["-version"]);
     await pnpm("install", "--frozen-lockfile");
