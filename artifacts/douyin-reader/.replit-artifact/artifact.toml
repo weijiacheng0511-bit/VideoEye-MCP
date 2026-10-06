@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "抖音公开视频读取器"
+description = "读取公开抖音分享链接，解析视频元数据和可用文稿，提供网页测试和 JSON API。"
+version = "1.0.0"
+id = "artifacts/douyin-reader"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25504
+
+[services.development]
+run = "pnpm --filter @workspace/douyin-reader run dev"
+
+[services.production]
+build = [ "node", "scripts/replit-build.mjs" ]
+serve = "static"
+publicDir = ".videoeye-release/artifacts/douyin-reader/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25504"
+BASE_PATH = "/"

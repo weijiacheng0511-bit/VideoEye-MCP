@@ -1,0 +1,90 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: douyin
+    description: Public Douyin video reading
+paths:
+  /douyin/read:
+    get:
+      operationId: readDouyinVideo
+      tags: [douyin]
+      summary: Read a public Douyin video by URL or share text
+      parameters:
+        - in: query
+          name: input
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 4000 }
+      responses:
+        "200":
+          description: Reading result, including partial results and explicit errors
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DouyinResult"
+    post:
+      operationId: submitDouyinVideo
+      tags: [douyin]
+      summary: Read a public Douyin video from share text
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DouyinInput"
+      responses:
+        "200":
+          description: Reading result, including partial results and explicit errors
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DouyinResult"
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+components:
+  schemas:
+    DouyinInput:
+      type: object
+      required: [input]
+      properties:
+        input: { type: string, minLength: 1, maxLength: 4000 }
+    DouyinResult:
+      type: object
+      required: [title, author, video_id, source_url, resolved_url, transcript, transcript_source, video_url, error]
+      properties:
+        title: { type: ["string", "null"] }
+        author: { type: ["string", "null"] }
+        video_id: { type: ["string", "null"] }
+        source_url: { type: ["string", "null"] }
+        resolved_url: { type: ["string", "null"] }
+        transcript: { type: ["string", "null"] }
+        transcript_source: { type: ["string", "null"], enum: [native, ai_transcription, null] }
+        video_url: { type: ["string", "null"] }
+        error: { type: ["string", "null"] }
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
