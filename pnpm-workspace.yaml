@@ -6,6 +6,8 @@ packages:
 
 autoInstallPeers: false
 strictPeerDependencies: false
+managePackageManagerVersions: false # Replit's pnpm 10 pre-install must not switch recursively.
+pmOnFail: ignore # The build bootstrap explicitly selects pnpm 11.
 
 catalog:
   '@replit/vite-plugin-cartographer': ^0.5.21

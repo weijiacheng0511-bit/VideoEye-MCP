@@ -56,7 +56,7 @@ try {
     const installedVersion = await pnpmCommand(["--version"], true);
     if (installedVersion !== "11.19.0") throw new Error(`Expected pnpm 11.19.0, received ${installedVersion}`);
     await command(process.env.FFMPEG_PATH || "ffmpeg", ["-version"]);
-    await pnpm("install", "--frozen-lockfile");
+    await pnpm("install", "--frozen-lockfile", "--prod=false");
     await pnpm("run", "build");
     await pnpm("--filter", "@workspace/api-server", "run", "videoeye:smoke", "offline");
     for (const test of ["videoeye:mcp-smoke", "videoeye:qwen-normalize-smoke", "videoeye:inspect-clip-smoke"]) {
