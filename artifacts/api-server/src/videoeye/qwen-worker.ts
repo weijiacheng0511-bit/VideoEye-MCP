@@ -198,6 +198,7 @@ function stringValue(value: unknown): string | undefined {
 }
 
 function stringArray(value: unknown): string[] {
+  if (typeof value === "string") return value.trim() ? [value] : [];
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
@@ -212,8 +213,9 @@ function entityTypeValue(value: unknown): z.infer<typeof recognizedEntitySchema>
 }
 
 function normalizeDialogue(value: unknown): z.infer<typeof dialogueSchema>[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap(item => {
+  const items = typeof value === "string" || isRecord(value) ? [value] : value;
+  if (!Array.isArray(items)) return [];
+  return items.flatMap(item => {
     if (typeof item === "string") return [{ speaker: "unknown", text: item, tone: "", uncertain: false }];
     if (!isRecord(item)) return [];
     const text = stringValue(item.text) ?? stringValue(item.quote) ?? "";
@@ -358,6 +360,7 @@ export class QwenVideoWorker implements VideoWorker {
       `此前对话背景仅用于指代消歧，不得据此补造视频事实，也不得把其中的人名当作身份识别证据：${JSON.stringify(request.previousContext)}。`;
     const prompt = `完整观看所附 MP4，同时使用画面和内嵌音频。${focus}${previous}` +
       `视频 ID：${request.videoId}。用户问题：${request.question}\n` +
+      `除原始对白和屏幕文字外，描述使用简体中文。下面各数组字段必须返回数组，不能用单个字符串代替。` +
       `请返回 JSON 对象，优先字段：` +
       `objective_observation_summary（只写客观事实摘要，禁止主题/寓意/评价）；` +
       `people（person_id、identity、identity_confidence、identity_evidence、appearance；真人姓名只能来自视频中的明确非生物识别命名证据）；` +
@@ -365,6 +368,9 @@ export class QwenVideoWorker implements VideoWorker {
       `screen_text（全局去重后的重要可见文字）；` +
       `recognized_entities（type、name、confidence、evidence；强识别非人物实体，不确定就降 confidence）；` +
       `uncertain_observations。` +
+      `timeline 的固定结构示例：{"timestamp":"00:00-00:03","event":"人物说话","evidence":"both","people":["P1"],"dialogue":[{"speaker":"P1","text":"听到的原话","tone":"平稳","uncertain":false}],"actions":["抬手"],"visuals":["实拍室内"],"screen_text":["可见文字"],"audio_events":["钢琴声"],"entities":[]}。示例仅说明类型，不能复制成视频事实。evidence 仅用 audio、visual、both、unknown。` +
+      `identity_evidence、recognized_entities[].evidence 和 uncertain_observations 也必须是字符串数组。people 使用稳定人物 ID，并在 timeline.people 和 dialogue.speaker 中关联；不得凭脸或声音写真人姓名。` +
+      `对有辨识线索的动画/影视作品、品牌、产品、地点等，尝试在 recognized_entities 中给出具体名称、画面或文字证据和 confidence；不要仅泛称“动画”或“物体”，也不要在证据不足时编造名称。` +
       `不要返回观点分析、主题判断、笑点解释、象征意义、作者意图、心理动机或价值评价。` +
       `不要为了文字漂亮而重复同一信息：完整细节放 timeline，objective_observation_summary 只做短摘要。`;
     const response = await fetch(new URL("/compatible-mode/v1/chat/completions", base), {
