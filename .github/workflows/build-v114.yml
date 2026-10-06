@@ -1,0 +1,72 @@
+name: Build VideoEye V1.1.4 package
+
+on:
+  push:
+    paths:
+      - "v114-overlay/**"
+      - ".github/workflows/build-v114.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build merged V1.1.4 package
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/videoeye-v114
+          mkdir -p /tmp/videoeye-v114
+          unzip -q VideoEye-MCP-V1.1.2-inspect-clipping.zip -d /tmp/videoeye-v114
+
+          cp v114-overlay/artifacts/api-server/src/videoeye/qwen-worker.ts             /tmp/videoeye-v114/artifacts/api-server/src/videoeye/qwen-worker.ts
+          cp v114-overlay/artifacts/api-server/src/videoeye/worker.ts             /tmp/videoeye-v114/artifacts/api-server/src/videoeye/worker.ts
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("/tmp/videoeye-v114/artifacts/api-server/src/videoeye/jobs.ts")
+          s = p.read_text()
+          old = 'export const VIDEOEYE_APP_VERSION = "1.1.2-inspect-clipping";'
+          new = 'export const VIDEOEYE_APP_VERSION = "1.1.4-video-observer";'
+          if old not in s:
+              raise SystemExit("Expected V1.1.2 version marker not found")
+          p.write_text(s.replace(old, new, 1))
+          PY
+
+          cat > /tmp/videoeye-v114/replit.nix <<'EOF'
+          { pkgs }: {
+            deps = [
+              pkgs.ffmpeg
+            ];
+          }
+          EOF
+
+          rm -f VideoEye-MCP-V1.1.4-video-observer.zip
+          (
+            cd /tmp/videoeye-v114
+            zip -qr "$GITHUB_WORKSPACE/VideoEye-MCP-V1.1.4-video-observer.zip" .
+          )
+
+          unzip -t VideoEye-MCP-V1.1.4-video-observer.zip >/dev/null
+          unzip -p VideoEye-MCP-V1.1.4-video-observer.zip artifacts/api-server/src/videoeye/jobs.ts | grep -q '1.1.4-video-observer'
+          unzip -l VideoEye-MCP-V1.1.4-video-observer.zip | grep -q 'replit.nix'
+
+      - name: Commit package
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add VideoEye-MCP-V1.1.4-video-observer.zip
+          if git diff --cached --quiet; then
+            echo "Package already up to date."
+            exit 0
+          fi
+          git commit -m "Build VideoEye MCP V1.1.4 Video Observer"
+          git push
