@@ -224,16 +224,25 @@ export function registerVideoEyeTools(server: McpServer, createEye: () => VideoE
 
   server.registerTool("get_analysis_job", {
     title: "Get VideoEye analysis job",
-    description: "Get the current status or completed result of an analyze_douyin_video / inspect_video background job without starting another model request. On Autoscale, active jobs use a bounded 20-second long poll by default so CPU-intensive clipping can continue even when clients do not expose wait_ms. Completed/failed jobs still return immediately.",
+    description: "Get the current status or completed result of an analyze_douyin_video / inspect_video background job without starting another model request. Normal checks return immediately. On Autoscale, if an older client omits wait_ms while an inspection is actively in the CPU-intensive clip stage, VideoEye automatically uses a bounded 20-second long poll so clipping can continue. Explicit wait_ms still overrides this behavior.",
     inputSchema: { job_id: jobIdSchema, wait_ms: z.number().int().min(0).max(20_000).optional() },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   }, async ({ job_id, wait_ms }) => {
     try {
       const eye = createEye();
       const manager = getVideoJobManager(eye.cache.root);
-      const job = await manager.get(job_id, wait_ms ?? 20_000);
-      if (!job) throw new Error("未找到该 job_id；任务可能已过期，或部署进程/存储已被重置");
-      return reply(job);
+      const initial = await manager.get(job_id, 0);
+      if (!initial) throw new Error("未找到该 job_id；任务可能已过期，或部署进程/存储已被重置");
+      const shouldAutoWaitForClip =
+        wait_ms === undefined &&
+        initial.status === "processing" &&
+        initial.stage === "clip";
+      const job = wait_ms !== undefined
+        ? await manager.get(job_id, wait_ms)
+        : shouldAutoWaitForClip
+          ? await manager.get(job_id, 20_000)
+          : initial;
+      return reply(job ?? initial);
     } catch (error) { return failure(error); }
   });
 
