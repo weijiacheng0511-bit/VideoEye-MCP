@@ -100,25 +100,21 @@ export async function createInspectionClip(sourcePath: string, plan: ClipPlan, j
   try {
     await runProcess(ffmpeg, [
       "-hide_banner", "-loglevel", "error", "-y",
-      // Autoscale provides two vCPUs; host CPU detection can oversubscribe codecs.
-      "-threads", "2", "-filter_threads", "2",
+      // inspect_video only needs a short playable segment for Qwen. Re-encoding
+      // H.264 on Replit Autoscale can run far below realtime, so use fast input
+      // seeking plus stream copy. The existing 3s padding absorbs keyframe seek
+      // imprecision while avoiding minutes of CPU work.
       "-ss", formatNumber(plan.clipStart),
       "-i", sourcePath,
       "-t", formatNumber(plan.clipDuration),
       "-map", "0:v:0",
       "-map", "0:a:0?",
       "-sn", "-dn",
-      "-c:v", "libx264",
-      "-preset", "veryfast",
-      "-threads", "2",
-      "-crf", "23",
-      "-c:a", "aac",
-      "-b:a", "128k",
-      "-movflags", "+faststart",
+      "-c", "copy",
       "-avoid_negative_ts", "make_zero",
-      "-progress", "pipe:2", "-stats_period", "2",
+      "-movflags", "+faststart",
       outputPath,
-    ], 180_000);
+    ], 60_000);
     const info = await stat(outputPath);
     if (!info.isFile() || info.size < 12) throw new Error("FFmpeg 裁剪结果为空或无效");
     return { path: outputPath, bytes: info.size, elapsedMs: Math.round(performance.now() - started) };
